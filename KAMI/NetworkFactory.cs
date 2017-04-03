@@ -87,6 +87,42 @@ namespace KAMI
 				blobIndex++;
 			}
 
+			var drawn = new List<int>();
+			var graphics = Graphics.FromImage(image);
+			graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+			for (int y = 0; y < fieldVerticalNum; y++)
+			{
+				for (int x = 0; x < fieldHorizontalNum; x++)
+				{
+					if (!drawn.Contains(objects[x, y]))
+					{
+						graphics.FillRectangle(
+							Brushes.Black,
+							new Rectangle(new Point(x * horizontalDelta, y * verticalDelta), new Size(50, 50)));
+						graphics.DrawString(objects[x, y].ToString(),
+							 new Font("Tahoma", 20),
+							 Brushes.White,
+							 new PointF(x * horizontalDelta + 5, y * verticalDelta + 5));
+
+						drawn.Add(objects[x, y]);
+					}
+				}
+			}
+			for (int i = 0; i < classes.Count(); i++)
+			{
+				int x = i * 100,
+					y = fieldHeight;
+				graphics.FillRectangle(
+					new SolidBrush(classes[i]),
+					new Rectangle(new Point(x, y), new Size(100, image.Height - fieldHeight)));
+				graphics.DrawString(i.ToString(),
+					 new Font("Tahoma", 40),
+                     Brushes.White,
+					 new PointF(x + 10, y + 10));
+			}
+				
+			image.Save("output.bmp");
+
 			var nodes = blobs
 				.Select(b =>
 				{
