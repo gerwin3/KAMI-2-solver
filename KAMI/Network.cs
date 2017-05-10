@@ -50,7 +50,7 @@ namespace KAMI
 			if (Parent != null)
 				Parent.PrintTree();
 			if (FromMoveNode != -1)
-				Console.WriteLine($"MOVE -> Tap {FromMoveNode} with {MainClass.Colors[FromMoveClass]}");
+				Console.WriteLine($"MOVE -> Tap {FromMoveNode} with {FromMoveClass}");
 	#if VERBOSE
 				Console.WriteLine($"     -> {GetInvariant()}");
 	#endif

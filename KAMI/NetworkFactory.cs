@@ -5,144 +5,90 @@ using System.Linq;
 
 namespace KAMI
 {
-	public static class NetworkFactory
+	public class NetworkFactory
 	{
-		public static Network CreateFromImage(Bitmap image)
+		private class Blob
 		{
-			const int fieldHeight = 1208;
-			const int fieldVerticalNum = 28;
-			const int fieldHorizontalNum = 10;
-
-			int horizontalDelta = image.Width / fieldHorizontalNum;
-			int verticalDelta = fieldHeight / fieldVerticalNum;
-
-			var grid = new Color[fieldHorizontalNum, fieldVerticalNum];
-
-			for (int y = 0, cy = 0; cy < fieldVerticalNum; y += verticalDelta, cy++)
-				for (int x = horizontalDelta / 2, cx = 0; cx < fieldHorizontalNum; x += horizontalDelta, cx++)
-					grid[cx, cy] = image.GetPixel(x, y);
-
-			var objects = new int[fieldHorizontalNum, fieldVerticalNum];
-			for (int y = 0; y < fieldVerticalNum; y++)
-				for (int x = 0; x < fieldHorizontalNum; x++)
-					objects[x, y] = -1;
-
-			int c = 0;
-			for (int y = 0; y < fieldVerticalNum; y++)
+			public Blob()
 			{
-				for (int x = 0; x < fieldHorizontalNum; x++)
-				{
-					if (objects[x, y] == -1)
-					{
-						Partition(grid, x, y, objects, c);
-						c++;
-					}
-				}
+				Id = -1;
+				Points = new List<XY>();
+				Neighbours = new List<int>();
 			}
 
-			var blobs = objects.Cast<int>().Distinct();
-			var blobNeighbours = new List<List<Tuple<int, int>>>();
-			for (int i = 0; i < blobs.Count(); i++)
-				blobNeighbours.Add(new List<Tuple<int, int>>());
-			for (int y = 0; y < fieldVerticalNum; y++)
-				for (int x = 0; x < fieldHorizontalNum; x++)
-					blobNeighbours[objects[x, y]].AddRange(Neighbours(x, y, fieldHorizontalNum, fieldVerticalNum));
-			var blobLinks = blobNeighbours
-				.Select(ns => ns
-					.Select(n => objects[n.Item1, n.Item2])
-					.Distinct()
-			        .ToList()
-				)
-				.ToList();
+			public int Id { get; set; }
+			public List<XY> Points { get; set; }
+			public List<int> Neighbours { get; set; }
+			public Color MyColor { get; set; }
 
-			var classes = new List<Color>();
-			var blobColors = new List<List<Color>>();
-			for (int i = 0; i < blobs.Count(); i++)
-				blobColors.Add(new List<Color>());
-			for (int y = 0; y < fieldVerticalNum; y++)
-				for (int x = 0; x < fieldHorizontalNum; x++)
-					blobColors[objects[x, y]].Add(grid[x, y]);
-			var blobColor = new Color[blobs.Count()];
-			int blobIndex = 0;
-			foreach (var blobC in blobColors)
+			public IEnumerable<Color> GetColors(Color[,] field)
 			{
-				Color avgc = Color.FromArgb(
-					(int) blobC.Select(x => (int) x.R).Average(),
-					(int) blobC.Select(x => (int) x.G).Average(),
-					(int) blobC.Select(x => (int) x.B).Average());
-
-				blobColor[blobIndex] = avgc;
-
-				if (classes.Count(x => {
-						var delta = Color.FromArgb(
-							Math.Abs(x.R - avgc.R),
-							Math.Abs(x.G - avgc.G),
-							Math.Abs(x.B - avgc.B));
-						return (delta.R < 30 && delta.G < 30 && delta.B < 30);
-					}) <= 0)
-				{
-					classes.Add(avgc);
-				}
-
-				blobIndex++;
+				return Points
+					.Select(p => field[p.X, p.Y]);
 			}
 
-			var drawn = new List<int>();
-			var graphics = Graphics.FromImage(image);
-			graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
-			for (int y = 0; y < fieldVerticalNum; y++)
+			public Color GetAverageColor(Color[,] field)
 			{
-				for (int x = 0; x < fieldHorizontalNum; x++)
-				{
-					if (!drawn.Contains(objects[x, y]))
-					{
-						graphics.FillRectangle(
-							Brushes.Black,
-							new Rectangle(new Point(x * horizontalDelta, y * verticalDelta), new Size(50, 50)));
-						graphics.DrawString(objects[x, y].ToString(),
-							 new Font("Tahoma", 20),
-							 Brushes.White,
-							 new PointF(x * horizontalDelta + 5, y * verticalDelta + 5));
-
-						drawn.Add(objects[x, y]);
-					}
-				}
+				var colors = GetColors(field);
+				return Color.FromArgb(
+					(int)colors.Select(x => (int)x.R).Average(),
+					(int)colors.Select(x => (int)x.G).Average(),
+					(int)colors.Select(x => (int)x.B).Average());
 			}
-			for (int i = 0; i < classes.Count(); i++)
+		}
+
+		private struct XY
+		{
+			public XY(int x, int y)
 			{
-				int x = i * 100,
-					y = fieldHeight;
-				graphics.FillRectangle(
-					new SolidBrush(classes[i]),
-					new Rectangle(new Point(x, y), new Size(100, image.Height - fieldHeight)));
-				graphics.DrawString(i.ToString(),
-					 new Font("Tahoma", 40),
-                     Brushes.White,
-					 new PointF(x + 10, y + 10));
+				X = x;
+				Y = y;
 			}
-				
-			image.Save("output.bmp");
 
-			var nodes = blobs
-				.Select(b =>
-				{
-					int clas = 0;
-					int tdeltaMin = int.MaxValue;
-					for (int i = 0; i < classes.Count(); i++)
-					{
-						var delta = Color.FromArgb(
-							Math.Abs(classes[i].R - blobColor[b].R),
-							Math.Abs(classes[i].G - blobColor[b].G),
-							Math.Abs(classes[i].B - blobColor[b].B));
-						var tdelta = delta.R + delta.G + delta.B;
-						if (tdelta < tdeltaMin)
-						{
-							tdeltaMin = tdelta;
-							clas = i;
-						}
-					}
-					return new Node(clas, blobLinks[b]);
-				})
+			public int X { get; set; }
+			public int Y { get; set; }
+		}
+
+		private readonly int ImageFieldHeight = MainClass.ImageFieldHeight;
+
+		private readonly int FieldWidth = 10;
+		private readonly int FieldHeight = 28;
+
+		private readonly int ObjectColorThreshold = 35;
+
+		private Bitmap Image { get; set; }
+		private int Width => Image.Width;
+		private int Height => Image.Height;
+
+		private int HorizontalDelta => Width / FieldWidth;
+		private int VerticalDelta => ImageFieldHeight / FieldHeight;
+
+		private Color[,] ColorGrid { get; set; }
+		private int ColorGridWidth => ColorGrid.GetLength(0);
+		private int ColorGridHeight => ColorGrid.GetLength(1);
+
+		private int[,] ObjectGrid { get; set; }
+		private int ObjectGridWidth => ObjectGrid.GetLength(0);
+		private int ObjectGridHeight => ObjectGrid.GetLength(1);
+
+		private List<Blob> Blobs { get; set; }
+
+		public Network CreateFromImage(Bitmap image)
+		{
+			Image = image;
+
+			GenerateColorGrid();
+			GenerateObjectGrid();
+			FindBlobsAndNeighbours();
+			AssignBlobColors();
+			RemoveEmptyBlobs();
+			DrawOutputImage();
+
+			var nodes = Blobs
+				.Select(b => new Node(
+					b.MyColor.ToArgb(),
+					b.Neighbours
+				))
 				.ToArray();
 
 			var network = new Network
@@ -158,53 +104,186 @@ namespace KAMI
 			return network;
 		}
 
-		private static List<Tuple<int, int>> Neighbours(int x, int y, int w, int h)
+		private void GenerateColorGrid()
 		{
-			return new List<Tuple<int, int>>
+			ColorGrid = new Color[FieldWidth, FieldHeight];
+
+			for (int y = 0, cy = 0; cy < FieldHeight; y += VerticalDelta, cy++)
 			{
-				Tuple.Create(x, y - 1),
-				Tuple.Create(x, y + 1),
-				(y % 2 == 0)
-					? Tuple.Create(x - 1, y)
-					: Tuple.Create(x + 1, y)
-			}
-			.Where(xy => xy.Item1 >= 0 && xy.Item1 < w && xy.Item2 >= 0 && xy.Item2 < h)
-		 	.ToList();
-		}
-
-		private static void Partition(Color[,] grd, int x, int y, int[,] objs, int cc)
-		{
-			int w = grd.GetLength(0),
-			    h = grd.GetLength(1);
-
-			const int threshold = 30;
-			objs[x, y] = cc;
-
-			int r = grd[x, y].R,
-				g = grd[x, y].G,
-				b = grd[x, y].B;
-
-			foreach (var cell in Neighbours(x, y, w, h))
-			{
-				int nx = cell.Item1,
-					ny = cell.Item2;
-
-				if (nx < 0 || nx >= w)
-					continue;
-				if (ny < 0 || ny >= h)
-					continue;
-				if (objs[nx, ny] != -1)
-					continue;
-
-				var pixel = grd[nx, ny];
-
-				if (Math.Abs(r - pixel.R) < threshold &&
-					Math.Abs(g - pixel.G) < threshold &&
-					Math.Abs(b - pixel.B) < threshold)
+				for (int x = HorizontalDelta / 2, cx = 0; cx < FieldWidth; x += HorizontalDelta, cx++)
 				{
-					Partition(grd, nx, ny, objs, cc);
+					ColorGrid[cx, cy] = Image.GetPixel(x, y);
+#if DEBUG
+					using (var g = Graphics.FromImage(Image))
+						g.DrawEllipse(Pens.Black, new Rectangle(x, y, 1, 1));
+						
+#endif
 				}
 			}
+		}
+
+		private void GenerateObjectGrid()
+		{
+			ObjectGrid = new int[FieldWidth, FieldHeight];
+			for (int y = 0; y < FieldHeight; y++)
+				for (int x = 0; x < FieldWidth; x++)
+					ObjectGrid[x, y] = -1;
+
+			int c = 0;
+			for (int y = 0; y < FieldHeight; y++)
+			{
+				for (int x = 0; x < FieldWidth; x++)
+				{
+					if (ObjectGrid[x, y] == -1)
+					{
+						Partition(x, y, c);
+						c++;
+					}
+				}
+			}
+		}
+
+		private List<XY> Neighbours(int x, int y)
+		{
+			return new List<XY>
+				{
+					new XY(x, y - 1),
+					new XY(x, y + 1),
+					(x % 2 == 0)
+						? (y % 2 == 0)
+							? new XY(x - 1, y)
+							: new XY(x + 1, y)
+						: (y % 2 == 0)
+							? new XY(x + 1, y)
+							: new XY(x - 1, y)
+				}
+				.Where(xy => xy.X >= 0 && xy.X < FieldWidth && xy.Y >= 0 && xy.Y < FieldHeight)
+		 		.ToList();
+		}
+
+		private void Partition(int x, int y, int cc)
+		{
+			ObjectGrid[x, y] = cc;
+
+			int r = ColorGrid[x, y].R,
+				g = ColorGrid[x, y].G,
+				b = ColorGrid[x, y].B;
+
+			foreach (var cell in Neighbours(x, y))
+			{
+				int nx = cell.X,
+					ny = cell.Y;
+
+				if (ObjectGrid[nx, ny] != -1)
+					continue;
+
+				var pixel = ColorGrid[nx, ny];
+
+				if (Math.Abs(r - pixel.R) < ObjectColorThreshold &&
+					Math.Abs(g - pixel.G) < ObjectColorThreshold &&
+					Math.Abs(b - pixel.B) < ObjectColorThreshold)
+				{
+					Partition(nx, ny, cc);
+				}
+			}
+		}
+
+		private void FindBlobsAndNeighbours()
+		{
+			var nblobs = ObjectGrid.Cast<int>().Distinct().Count();
+			var blobs = new List<Blob>();
+			for (int i = 0; i < nblobs; i++)
+				blobs.Add(new Blob());
+
+			for (int y = 0; y < FieldHeight; y++)
+			{
+				for (int x = 0; x < FieldWidth; x++)
+				{
+					int blobId = ObjectGrid[x, y];
+					var blob = blobs[blobId];
+					if (blob.Id == -1)
+						blob.Id = blobId;
+					blob.Points.Add(new XY(x, y));
+
+					foreach (var neighbour in Neighbours(x, y))
+					{
+						int neighbourBlobId = ObjectGrid[neighbour.X, neighbour.Y];
+						// Add neighbour if not yet found
+						if (ObjectGrid[neighbour.X, neighbour.Y] != blobId &&
+							!blob.Neighbours.Contains(neighbourBlobId))
+						{
+							blob.Neighbours.Add(neighbourBlobId);
+						}
+					}
+				}
+			}
+
+			Blobs = blobs;
+		}
+
+		private void AssignBlobColors()
+		{
+			var classes = new List<Color>();
+			foreach (var blob in Blobs)
+			{
+				var avgc = blob.GetAverageColor(ColorGrid);
+				var pred = new Func<Color, bool>(x =>
+				{
+					var delta = Color.FromArgb(
+							Math.Abs(x.R - avgc.R),
+							Math.Abs(x.G - avgc.G),
+							Math.Abs(x.B - avgc.B));
+					return (delta.R < 30 && delta.G < 30 && delta.B < 30);
+				});
+
+				if (classes.Any(pred))
+				{
+					var colorclass = classes.First(pred);
+					blob.MyColor = colorclass;
+				}
+				else
+				{
+					classes.Add(avgc);
+					blob.MyColor = avgc;
+				}
+			}
+		}
+
+		private void RemoveEmptyBlobs()
+		{
+			var nilBlob = Blobs.FirstOrDefault(b =>
+	 			(new byte[] { b.MyColor.R, b.MyColor.G, b.MyColor.B }).All(x => x > 210));
+
+			Blobs.ForEach(b => b.Neighbours.RemoveAll(n => n == nilBlob.Id));
+			Blobs.RemoveAt(nilBlob.Id);
+		}
+
+		private void DrawOutputImage()
+		{
+			var drawn = new List<int>();
+			var graphics = Graphics.FromImage(Image);
+			graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+			for (int y = 0; y < FieldHeight; y++)
+			{
+				for (int x = 0; x < FieldWidth; x++)
+				{
+					if (!drawn.Contains(ObjectGrid[x, y]) &&
+					    Blobs.Any(b => b.Id == ObjectGrid[x, y]))
+					{
+						graphics.FillEllipse(
+							new SolidBrush(Color.FromArgb(100, 0, 0, 0)),
+							new Rectangle(new Point(x * HorizontalDelta, y * VerticalDelta), new Size(60, 60)));
+						graphics.DrawString(ObjectGrid[x, y].ToString(),
+							 new Font("Tahoma", 20),
+							 Brushes.White,
+							 new PointF(x * HorizontalDelta + 10, y * VerticalDelta + 10));
+
+						drawn.Add(ObjectGrid[x, y]);
+					}
+				}
+			}
+
+			Image.Save("output.bmp");
 		}
 	}
 }
